@@ -2,32 +2,19 @@ import asyncio
 import aiohttp
 import pickle
 import os
-from flask import Flask, request
+import time
+from flask import Flask
 from threading import Thread
 
-# --- 1. إعداد خادم الويب (للربط مع ميتا للمطورين) ---
+# --- 1. إعداد خادم الويب لإرضاء منصة Render ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "<h1>Bot is Online!</h1><p>Status: Live and waiting for Facebook Webhooks.</p>"
-
-@app.route('/', methods=['GET'])
-def verify():
-    # هذا هو الجزء الذي يطلبه ميتا للمطورين للتحقق من الرابط
-    # تم ضبط رمز التحقق (Verify Token) إلى 444666 بناءً على طلبك
-    verify_token = "444666"
-    
-    mode = request.args.get("hub.mode")
-    token = request.args.get("hub.verify_token")
-    challenge = request.args.get("hub.challenge")
-
-    if mode == "subscribe" and token == verify_token:
-        print("✅ Webhook Verified Successfully!")
-        return challenge
-    return "Verification Failed", 403
+    return "<h1>Bot is Running</h1><p>Polling mode is active.</p>"
 
 def run():
+    # تشغيل السيرفر على المنفذ 8080 الذي يتوقعه Render
     app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
@@ -35,21 +22,18 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# --- 2. الإعدادات الأساسية للبوت ---
-FACEBOOK_PAGE_ACCESS_TOKEN = 'EAAMJBZBOZCnhsBQeZCf8Fjatgj3BbtrZA8siV3yAnckdqFo8ssedvKm1AZAQHQ8iXVkEqlWMZBt9Qi5EjOoOnMJw4TDGjlE1N8RrT82DAa3dGY0j4spSk3fmOxdt5jATjwqFGrABm7tRJN2JmfjzkIGlYJtXmMmTzWdrGacCv5cs5SkCciNR6ZAMGKEW4ZC2kHQQjUwQiwZDZD'
+# --- 2. الإعدادات الأصلية من ملفك ---
+FACEBOOK_PAGE_ACCESS_TOKEN = 'EAAMJBZBOZCnhsBQTnNVcyOXlXFvsCgedVN5zc50ReXNZCEHnuTZAADUDDeqMD5i3NSwTH1uuMl1H9oju2zx5J0fM8NCeuz106ZCOFx9zCAVgA7fChj3F7ze1oEEkPM4Vn6lZA2hvlbVFS4ghyMOi3Epu91nDl8DeEaDF4kfoPE84clfubyZAonihEKGS6cn0ZBVOXvKi9gZDZD'
 PAGE_ID = "615585802125461" 
 MISTRAL_API_KEY = "wqnIC6QPwYjH3ow1I1gcBVH2SSEyTjPR"
 MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
-
-# كلمة سر التفعيل التي طلبتها
-SYSTEM_PASSWORD = "abc12" 
-
+SYSTEM_PASSWORD = "12ASM88CV"
 DATA_FILE = "universal_core_memory.pkl"
 TEXT_MODEL = "mistral-large-latest"
 
 SYSTEM_INSTRUCTION = (
     "أنت مساعد ذكي مطورك هو 'Myxe Ui'. "
-    "قاعدة الإجابة: كن مختصراً وموجزاً جداً في ردودك."
+    "قاعدة الإجابة: كن مختصراً وموجزاً جداً في ردودك كوضع افتراضي."
 )
 
 storage = {"auth": set(), "history": {}, "processed_ids": set()}
@@ -66,14 +50,20 @@ def save_engine_data():
         with open(DATA_FILE, 'wb') as f: pickle.dump(storage, f)
     except: pass
 
-# --- 3. نظام المعالجة والإرسال ---
+async def typing_on_loop(recipient_id, stop_event):
+    async with aiohttp.ClientSession() as session:
+        while not stop_event.is_set():
+            payload = {"recipient": {"id": recipient_id}, "sender_action": "typing_on"}
+            await session.post(f"https://graph.facebook.com/v11.0/me/messages?access_token={FACEBOOK_PAGE_ACCESS_TOKEN}", json=payload)
+            await asyncio.sleep(2.5)
+
 async def call_mistral_expanded(messages):
     headers = {"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": TEXT_MODEL,
         "messages": [{"role": "system", "content": SYSTEM_INSTRUCTION}] + messages,
         "temperature": 0.5,
-        "max_tokens": 1000
+        "max_tokens": 4000
     }
     async with aiohttp.ClientSession() as session:
         try:
@@ -84,23 +74,61 @@ async def call_mistral_expanded(messages):
 
 async def delivery_system(recipient_id, text):
     async with aiohttp.ClientSession() as session:
-        payload = {"recipient": {"id": recipient_id}, "message": {"text": text}}
-        await session.post(f"https://graph.facebook.com/v11.0/me/messages?access_token={FACEBOOK_PAGE_ACCESS_TOKEN}", json=payload)
+        chunks = [text[i:i+2000] for i in range(0, len(text), 2000)]
+        for chunk in chunks:
+            payload = {"recipient": {"id": recipient_id}, "message": {"text": chunk}}
+            await session.post(f"https://graph.facebook.com/v11.0/me/messages?access_token={FACEBOOK_PAGE_ACCESS_TOKEN}", json=payload)
+            await asyncio.sleep(0.5)
+
+async def handle_user_logic(sender_id, text):
+    if str(sender_id) == str(PAGE_ID) or not text: return
+    if sender_id not in storage["auth"]:
+        if text.strip() == SYSTEM_PASSWORD:
+            storage["auth"].add(sender_id)
+            save_engine_data()
+            await delivery_system(sender_id, "✅ تم تفعيل المحرك.")
+        else:
+            await delivery_system(sender_id, "🔒 أدخل مفتاح الوصول:")
+        return
+    stop_typing = asyncio.Event()
+    typing_task = asyncio.create_task(typing_on_loop(sender_id, stop_typing))
+    try:
+        history = storage["history"].get(sender_id, [])
+        history.append({"role": "user", "content": text})
+        response = await call_mistral_expanded(history[-15:])
+        if response:
+            await delivery_system(sender_id, response)
+            history.append({"role": "assistant", "content": response})
+            storage["history"][sender_id] = history
+            save_engine_data()
+    finally:
+        stop_typing.set()
+        await typing_task
 
 async def core_engine_loop():
     load_engine_data()
-    print(f"🔥 المحرك يعمل بكلمة سر التفعيل: {SYSTEM_PASSWORD}")
+    print("🔥 المحرك يعمل بنظام السحب (Polling)...")
     while True:
         try:
-            # هنا يوضع كود فحص الرسائل الأصلي
-            await asyncio.sleep(2) 
-        except Exception as e:
-            await asyncio.sleep(5)
+            url = f"https://graph.facebook.com/v11.0/me/conversations?fields=messages.limit(5){{message,from,id}}&access_token={FACEBOOK_PAGE_ACCESS_TOKEN}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as r:
+                    data = await r.json()
+                    for conv in data.get('data', []):
+                        for m in conv.get('messages', {}).get('data', []):
+                            m_id, sender_id = m['id'], m['from']['id']
+                            if sender_id != PAGE_ID and m_id not in storage.get("processed_ids", set()):
+                                if "processed_ids" not in storage: storage["processed_ids"] = set()
+                                storage["processed_ids"].add(m_id)
+                                asyncio.create_task(handle_user_logic(sender_id, m.get('message', '')))
+            await asyncio.sleep(1)
+        except: await asyncio.sleep(2)
 
+# --- 3. تشغيل النظام المدمج ---
 if __name__ == "__main__":
-    keep_alive() # تشغيل خادم الويب في الخلفية للربط مع ميتا
+    keep_alive() # تشغيل خادم الويب لإبقاء Render متصلاً
     try:
-        asyncio.run(core_engine_loop()) # تشغيل محرك البوت
+        asyncio.run(core_engine_loop()) # تشغيل محرك البوت الأصلي
     except KeyboardInterrupt:
         save_engine_data()
-    
+        
