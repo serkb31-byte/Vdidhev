@@ -6,28 +6,30 @@ import time
 from flask import Flask
 from threading import Thread
 
-# --- 1. إعداد خادم الويب لإرضاء منصة Render ---
+# --- 1. خادم الويب لمنع "النوم" واستقبال النبضات ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "<h1>Bot is Running</h1><p>Polling mode is active.</p>"
+    # هذه الصفحة ستظهر عند زيارة رابط البوت أو من قبل Cron-job
+    return "<h1>Bot Status: Active</h1><p>The engine is running in Polling mode.</p>"
 
 def run():
-    # تشغيل السيرفر على المنفذ 8080 الذي يتوقعه Render
+    # تشغيل الخادم على المنفذ 8080 المتوافق مع Render
     app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
+    # تشغيل الخادم في خيط منفصل (Thread) لكي لا يعطل محرك البوت
     t = Thread(target=run)
     t.daemon = True
     t.start()
 
-# --- 2. الإعدادات الأصلية من ملفك ---
+# --- 2. الإعدادات والبيانات الأصلية ---
 FACEBOOK_PAGE_ACCESS_TOKEN = 'EAAMJBZBOZCnhsBQTnNVcyOXlXFvsCgedVN5zc50ReXNZCEHnuTZAADUDDeqMD5i3NSwTH1uuMl1H9oju2zx5J0fM8NCeuz106ZCOFx9zCAVgA7fChj3F7ze1oEEkPM4Vn6lZA2hvlbVFS4ghyMOi3Epu91nDl8DeEaDF4kfoPE84clfubyZAonihEKGS6cn0ZBVOXvKi9gZDZD'
 PAGE_ID = "615585802125461" 
 MISTRAL_API_KEY = "wqnIC6QPwYjH3ow1I1gcBVH2SSEyTjPR"
 MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
-SYSTEM_PASSWORD = "12ASM88CV"
+SYSTEM_PASSWORD = "12ASM88CV" # كلمة السر الأصلية لتفعيل المحرك
 DATA_FILE = "universal_core_memory.pkl"
 TEXT_MODEL = "mistral-large-latest"
 
@@ -50,6 +52,7 @@ def save_engine_data():
         with open(DATA_FILE, 'wb') as f: pickle.dump(storage, f)
     except: pass
 
+# --- 3. أنظمة المعالجة والإرسال ---
 async def typing_on_loop(recipient_id, stop_event):
     async with aiohttp.ClientSession() as session:
         while not stop_event.is_set():
@@ -82,16 +85,19 @@ async def delivery_system(recipient_id, text):
 
 async def handle_user_logic(sender_id, text):
     if str(sender_id) == str(PAGE_ID) or not text: return
+    
     if sender_id not in storage["auth"]:
         if text.strip() == SYSTEM_PASSWORD:
             storage["auth"].add(sender_id)
             save_engine_data()
-            await delivery_system(sender_id, "✅ تم تفعيل المحرك.")
+            await delivery_system(sender_id, "✅ تم تفعيل المحرك بنجاح.")
         else:
-            await delivery_system(sender_id, "🔒 أدخل مفتاح الوصول:")
+            await delivery_system(sender_id, "🔒 المحرك مغلق. أدخل مفتاح الوصول:")
         return
+
     stop_typing = asyncio.Event()
     typing_task = asyncio.create_task(typing_on_loop(sender_id, stop_typing))
+    
     try:
         history = storage["history"].get(sender_id, [])
         history.append({"role": "user", "content": text})
@@ -107,7 +113,7 @@ async def handle_user_logic(sender_id, text):
 
 async def core_engine_loop():
     load_engine_data()
-    print("🔥 المحرك يعمل بنظام السحب (Polling)...")
+    print("🔥 المحرك يعمل بنظام السحب المستمر (Polling Mode)...")
     while True:
         try:
             url = f"https://graph.facebook.com/v11.0/me/conversations?fields=messages.limit(5){{message,from,id}}&access_token={FACEBOOK_PAGE_ACCESS_TOKEN}"
@@ -121,14 +127,15 @@ async def core_engine_loop():
                                 if "processed_ids" not in storage: storage["processed_ids"] = set()
                                 storage["processed_ids"].add(m_id)
                                 asyncio.create_task(handle_user_logic(sender_id, m.get('message', '')))
-            await asyncio.sleep(1)
-        except: await asyncio.sleep(2)
+            await asyncio.sleep(1) # فحص الرسائل كل ثانية
+        except Exception as e:
+            print(f"Error in loop: {e}")
+            await asyncio.sleep(2)
 
-# --- 3. تشغيل النظام المدمج ---
+# --- 4. نقطة الانطلاق المزدوجة ---
 if __name__ == "__main__":
-    keep_alive() # تشغيل خادم الويب لإبقاء Render متصلاً
+    keep_alive() # تشغيل خادم الويب في الخلفية
     try:
-        asyncio.run(core_engine_loop()) # تشغيل محرك البوت الأصلي
+        asyncio.run(core_engine_loop()) # تشغيل محرك البوت الأساسي
     except KeyboardInterrupt:
         save_engine_data()
-        
