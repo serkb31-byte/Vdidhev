@@ -3,23 +3,30 @@ import aiohttp
 import pickle
 import os
 import time
-from flask import Flask
+from flask import Flask, request
 from threading import Thread
 
-# --- 1. إعداد خادم الويب (الدمج المطلوب لـ Render) ---
+# --- 1. إعداد خادم الويب (الدمج المطلوب لـ Render وفيسبوك) ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    # هذا الرابط الذي ستفتحه للتأكد أن البوت يعمل
     return "<h1>Bot is Online!</h1><p>Myxe Ui Bot is running 24/7.</p>"
 
+@app.route('/', methods=['GET'])
+def verify():
+    # هذا الجزء ضروري لربط الـ Webhook في صفحة مطوري فيسبوك
+    # الـ Verify Token هو: my_secret_token (يمكنك تغييره)
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+    if token == "my_secret_token":
+        return challenge
+    return "Verification Failed"
+
 def run():
-    # المنفذ 8080 هو الافتراضي لموقع Render
     app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
-    # تشغيل الخادم في مسار منفصل لضمان عدم توقف البوت
     t = Thread(target=run)
     t.daemon = True
     t.start()
@@ -29,7 +36,10 @@ FACEBOOK_PAGE_ACCESS_TOKEN = 'EAAMJBZBOZCnhsBQTnNVcyOXlXFvsCgedVN5zc50ReXNZCEHnu
 PAGE_ID = "615585802125461" 
 MISTRAL_API_KEY = "wqnIC6QPwYjH3ow1I1gcBVH2SSEyTjPR"
 MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
-SYSTEM_PASSWORD = "12ASM88CV"
+
+# تم تغيير كلمة المرور بناءً على طلبك
+SYSTEM_PASSWORD = "abc12" 
+
 DATA_FILE = "universal_core_memory.pkl"
 TEXT_MODEL = "mistral-large-latest"
 
@@ -74,20 +84,19 @@ async def delivery_system(recipient_id, text):
 
 async def core_engine_loop():
     load_engine_data()
-    print("🔥 المحرك يعمل الآن...")
+    print(f"🔥 المحرك يعمل بكلمة سر: {SYSTEM_PASSWORD}")
     while True:
         try:
-            # منطق فحص الرسائل المأخوذ من ملفك الأصلي
+            # هنا يوضع منطق فحص الرسائل الأصلي
             await asyncio.sleep(2) 
         except Exception as e:
             await asyncio.sleep(5)
 
 # --- 3. نقطة التشغيل النهائية ---
 if __name__ == "__main__":
-    # تشغيل خادم الويب أولاً
     keep_alive()
-    # تشغيل محرك البوت الأساسي
     try:
         asyncio.run(core_engine_loop())
     except KeyboardInterrupt:
         save_engine_data()
+        
