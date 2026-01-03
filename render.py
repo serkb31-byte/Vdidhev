@@ -6,30 +6,35 @@ import time
 from flask import Flask
 from threading import Thread
 
-# --- 1. خادم الويب لمنع "النوم" واستقبال النبضات ---
+# --- 1. إعداد "الباب" (خادم الويب) ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    # هذه الصفحة ستظهر عند زيارة رابط البوت أو من قبل Cron-job
-    return "<h1>Bot Status: Active</h1><p>The engine is running in Polling mode.</p>"
+    # هذا هو "الباب" الذي سيطرقه Cron-job. 
+    # الرد نصي فقط ولا يرسل أي أوامر لفيسبوك، مما يمنع طلب كلمة السر.
+    return "<h1>Bot Status: Active</h1><p>The engine is running and waiting for messages...</p>"
+
+@app.route('/health')
+def health():
+    return "OK", 200
 
 def run():
-    # تشغيل الخادم على المنفذ 8080 المتوافق مع Render
-    app.run(host='0.0.0.0', port=8080)
+    # Render يمرر المنفذ عبر متغير البيئة PORT تلقائياً
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
-    # تشغيل الخادم في خيط منفصل (Thread) لكي لا يعطل محرك البوت
+    # تشغيل الخادم في خلفية الكود لضمان عدم توقف السحب (Polling)
     t = Thread(target=run)
     t.daemon = True
     t.start()
 
-# --- 2. الإعدادات والبيانات الأصلية ---
+# --- 2. الإعدادات والبيانات (بدون كلمة سر) ---
 FACEBOOK_PAGE_ACCESS_TOKEN = 'EAAMJBZBOZCnhsBQTnNVcyOXlXFvsCgedVN5zc50ReXNZCEHnuTZAADUDDeqMD5i3NSwTH1uuMl1H9oju2zx5J0fM8NCeuz106ZCOFx9zCAVgA7fChj3F7ze1oEEkPM4Vn6lZA2hvlbVFS4ghyMOi3Epu91nDl8DeEaDF4kfoPE84clfubyZAonihEKGS6cn0ZBVOXvKi9gZDZD'
 PAGE_ID = "615585802125461" 
 MISTRAL_API_KEY = "wqnIC6QPwYjH3ow1I1gcBVH2SSEyTjPR"
 MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions"
-SYSTEM_PASSWORD = "12ASM88CV" # كلمة السر الأصلية لتفعيل المحرك
 DATA_FILE = "universal_core_memory.pkl"
 TEXT_MODEL = "mistral-large-latest"
 
@@ -86,14 +91,10 @@ async def delivery_system(recipient_id, text):
 async def handle_user_logic(sender_id, text):
     if str(sender_id) == str(PAGE_ID) or not text: return
     
+    # تم إلغاء طلب كلمة السر: تفعيل المستخدم تلقائياً
     if sender_id not in storage["auth"]:
-        if text.strip() == SYSTEM_PASSWORD:
-            storage["auth"].add(sender_id)
-            save_engine_data()
-            await delivery_system(sender_id, "✅ تم تفعيل المحرك بنجاح.")
-        else:
-            await delivery_system(sender_id, "🔒 المحرك مغلق. أدخل مفتاح الوصول:")
-        return
+        storage["auth"].add(sender_id)
+        save_engine_data()
 
     stop_typing = asyncio.Event()
     typing_task = asyncio.create_task(typing_on_loop(sender_id, stop_typing))
@@ -113,7 +114,7 @@ async def handle_user_logic(sender_id, text):
 
 async def core_engine_loop():
     load_engine_data()
-    print("🔥 المحرك يعمل بنظام السحب المستمر (Polling Mode)...")
+    print("🔥 المحرك يعمل الآن بدون كلمة مرور مع دعم بقاء الاتصال...")
     while True:
         try:
             url = f"https://graph.facebook.com/v11.0/me/conversations?fields=messages.limit(5){{message,from,id}}&access_token={FACEBOOK_PAGE_ACCESS_TOKEN}"
@@ -127,15 +128,15 @@ async def core_engine_loop():
                                 if "processed_ids" not in storage: storage["processed_ids"] = set()
                                 storage["processed_ids"].add(m_id)
                                 asyncio.create_task(handle_user_logic(sender_id, m.get('message', '')))
-            await asyncio.sleep(1) # فحص الرسائل كل ثانية
+            await asyncio.sleep(1)
         except Exception as e:
-            print(f"Error in loop: {e}")
             await asyncio.sleep(2)
 
-# --- 4. نقطة الانطلاق المزدوجة ---
+# --- 4. التشغيل النهائي ---
 if __name__ == "__main__":
-    keep_alive() # تشغيل خادم الويب في الخلفية
+    keep_alive() # فتح "الباب" لـ Cron-job ولنظام Render
     try:
-        asyncio.run(core_engine_loop()) # تشغيل محرك البوت الأساسي
+        asyncio.run(core_engine_loop()) # تشغيل محرك البوت
     except KeyboardInterrupt:
         save_engine_data()
+        
