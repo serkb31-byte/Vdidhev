@@ -6,12 +6,12 @@ import time
 from flask import Flask
 from threading import Thread
 
-# --- 1. واجهة نظام Natalia السحابية ---
+# --- 1. واجهة النظام ---
 app = Flask('Natalia_OS')
 
 @app.route('/')
 def home():
-    return "<h1 style='color:#4ecca3;'>Natalia v1.2 Online</h1><p>Myxe Ui Systems</p>"
+    return "<h1 style='color:#38bdf8;'>Natalia v1.2 is Ready</h1><p>Myxe Ui Systems</p>"
 
 def run():
     port = int(os.environ.get("PORT", 8080))
@@ -22,50 +22,67 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# --- 2. الإعدادات ---
+# --- 2. الإعدادات والتوكن ---
 FB_TOKEN = 'EAAMJBZBOZCnhsBQmp8RnvrHigp1k1it0MwZAGipuKnxrLAufGgilRPktU65uRp6ZBtQnGJXEi52JPk6FdYCmx1pOyAPKTtIMPZAORKzkfHyHCC6EMUDYGGdSZCgUqZCO8FYvoEH7Uu9g9ZCWZANkSmdQyfinUJZBmWaOv2qavXUDQRbnAKEicl5UQGswvZBDK9R07K5memAcQZDZD'
 MISTRAL_API_KEY = "wqnIC6QPwYjH3ow1I1gcBVH2SSEyTjPR"
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 GRAPH_URL = "https://graph.facebook.com/v11.0/me"
 
-# --- 3. تدريب الهوية المتقدم (طول متوسط وسرعة بديهة) ---
-SYSTEM_INSTRUCTION = (
-    "اسمك هو 'Natalia' (ناتاليا). أنتِ نموذج Natalia v1.2 المطور بواسطة 'Myxe Ui'. "
-    "قواعد الحوار: "
-    "1. الهوية: إذا سُئلتِ عن اسمكِ، مطوركِ، أو إصداركِ، أجيبي بوضوح وفخر بأنكِ Natalia 1.2 من صنع Myxe Ui. "
-    "2. طول الرد: اجعلي ردودك 'متوسطة' الطول. لا تختصري بكلمة واحدة، ولا تكتبي مقالات طويلة جداً. كوني خير الأمور الوسط. "
-    "3. الترحيب: إذا قال المستخدم 'مرحبا' أو ما يشابهها، رحبي به بذكاء واسأليه كيف يمكنك مساعدته اليوم بطريقة ودودة. "
-    "4. النبرة: أنتِ ذكاء اصطناعي راقٍ، سريع البديهة، ومحترف."
-)
-
+user_memory = {}
 processed_message_ids = set()
 
-# --- 4. وظائف التفاعل السريع ---
+# --- 3. التدريب الذكي المطور ---
+SYSTEM_INSTRUCTION = (
+    "أنت 'Natalia' (ناتاليا) الإصدار 1.2. "
+    "قواعد الحوار: "
+    "1. الحوار العام: تحدث بالمذكر كمساعد ذكي 👨‍💻. "
+    "2. التعريف بالذات: عند السؤال حصراً عن اسمك أو من صنعك، أجب بالمؤنث (أنا ناتاليا من Myxe Ui) 🌸. "
+    "3. رسالة الترحيب الأولى: إذا كانت هذه أول مرة يتواصل فيها المستخدم، رحب به بحرارة باستخدام الإيموجي "
+    "وقل له: 'أهلاً بك! أنا ناتاليا، يسعدني جداً تواصلك معي اليوم ✨.. كيف يمكنني مساعدتك؟ 🤝' "
+    "يُمنع ذكر اسم المطور (Myxe Ui) أو مصطلح 'محرك سيادي' في هذه الرسالة الترحيبية الأولى نهائياً. "
+    "4. الأسلوب: ردود متوسطة، ذكية، ومليئة بالحيوية والإيموجي المناسب 🚀."
+)
 
-async def send_action(recipient_id, action="typing_on"):
-    """إظهار ميزة 'جاري الكتابة' أو 'تمت القراءة'"""
+# --- 4. محركات التواصل ---
+
+async def send_typing_action(recipient_id, action="typing_on"):
     url = f"{GRAPH_URL}/messages?access_token={FB_TOKEN}"
     payload = {"recipient": {"id": recipient_id}, "sender_action": action}
     async with aiohttp.ClientSession() as session:
         await session.post(url, json=payload)
 
-async def call_natalia_engine(user_query):
-    """توليد الرد المتوسط والسريع"""
+async def call_natalia_engine(sender_id, user_query):
+    is_new_user = False
+    if sender_id not in user_memory:
+        user_memory[sender_id] = [{"role": "system", "content": SYSTEM_INSTRUCTION}]
+        is_new_user = True
+    
+    # تنبيه داخلي للنموذج بخصوص أول رسالة
+    input_text = f"[FIRST_TIME_CONTACT]: {user_query}" if is_new_user else user_query
+    
+    user_memory[sender_id].append({"role": "user", "content": input_text})
+    
+    if len(user_memory[sender_id]) > 11:
+        user_memory[sender_id] = [user_memory[sender_id][0]] + user_memory[sender_id][-10:]
+
     headers = {"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": "mistral-large-latest",
-        "messages": [{"role": "system", "content": SYSTEM_INSTRUCTION}, {"role": "user", "content": user_query}],
-        "temperature": 0.7, 
-        "max_tokens": 800  # ضبط الحد الأقصى لضمان ردود متوسطة الطول
+        "messages": user_memory[sender_id],
+        "temperature": 0.75,
+        "max_tokens": 1000
     }
+    
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(MISTRAL_URL, headers=headers, json=payload) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    return data['choices'][0]['message']['content']
+                    reply = data['choices'][0]['message']['content']
+                    user_memory[sender_id].append({"role": "assistant", "content": reply})
+                    return reply
         except: pass
-    return "أنا هنا، كيف يمكنني مساعدتك؟"
+    return "أهلاً بك! ناتاليا معك، كيف أقدر أساعدك اليوم؟ ✨"
 
 async def send_to_facebook(recipient_id, message_text):
     url = f"{GRAPH_URL}/messages?access_token={FB_TOKEN}"
@@ -74,10 +91,9 @@ async def send_to_facebook(recipient_id, message_text):
         await session.post(url, json=payload)
 
 async def poll_messages():
-    """نظام الفحص فائق السرعة"""
     global processed_message_ids
     last_checked = int(time.time())
-    print("🚀 Natalia 1.2 is sprinting...")
+    print("🚀 Natalia 1.2 is LIVE with Emoji Greeting...")
 
     while True:
         try:
@@ -88,31 +104,25 @@ async def poll_messages():
                         data = await response.json()
                         for conversation in data.get('data', []):
                             for msg in conversation.get('messages', {}).get('data', []):
-                                msg_id = msg['id']
-                                if msg_id not in processed_message_ids:
+                                if msg['id'] not in processed_message_ids:
                                     sender_id = msg['from']['id']
                                     text = msg.get('message', '')
                                     
                                     if text:
-                                        # 1. إظهار 'جاري الكتابة' فوراً
-                                        await send_action(sender_id, "typing_on")
-                                        # 2. توليد الرد
-                                        reply = await call_natalia_engine(text)
-                                        # 3. إرسال الرد وإخفاء 'جاري الكتابة'
+                                        await send_typing_action(sender_id, "typing_on")
+                                        reply = await call_natalia_engine(sender_id, text)
                                         await send_to_facebook(sender_id, reply)
-                                        await send_action(sender_id, "typing_off")
+                                        await send_typing_action(sender_id, "typing_off")
                                     
-                                    processed_message_ids.add(msg_id)
+                                    processed_message_ids.add(msg['id'])
                         last_checked = int(time.time())
-            # تقليل وقت الانتظار إلى 0.8 ثانية لرد فعل فوري
-            await asyncio.sleep(0.8)
+            await asyncio.sleep(0.7)
         except:
-            await asyncio.sleep(3)
+            await asyncio.sleep(4)
 
 if __name__ == "__main__":
     keep_alive()
     try:
         asyncio.run(poll_messages())
     except KeyboardInterrupt:
-        print("Offline.")
-    
+        print("Shutdown.")
