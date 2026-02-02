@@ -6,24 +6,14 @@ import time
 from flask import Flask
 from threading import Thread
 
-# --- 1. واجهة نظام Natalia السحابية (Myxe Ui Ecosystem) ---
+# --- 1. واجهة نظام Natalia السحابية ---
 app = Flask('Natalia_OS')
 
 @app.route('/')
 def home():
-    return """
-    <div style="text-align:center; padding:100px; font-family: 'Segoe UI', sans-serif; background: radial-gradient(circle, #1a1a2e 0%, #16213e 100%); color: white; height: 100vh; margin:0;">
-        <h1 style="color:#4ecca3; font-size: 3rem; margin-bottom:10px;">Natalia v1.2</h1>
-        <p style="font-size: 1.2rem; color: #95a5a6;">The Sovereign Intelligence Engine</p>
-        <div style="margin-top: 30px; padding: 15px; border: 1px dashed #4ecca3; display: inline-block; border-radius: 8px;">
-            <span style="color:#2ecc71;">●</span> System Status: <b style="color:#4ecca3;">Ultra-Precision Mode Active</b>
-        </div>
-        <footer style="margin-top: 50px; font-size: 0.9rem; opacity: 0.6;">© 2026 Myxe Ui Systems</footer>
-    </div>
-    """
+    return "<h1 style='color:#4ecca3;'>Natalia v1.2 Online</h1><p>Myxe Ui Systems</p>"
 
 def run():
-    # استجابة لمتطلبات Render في تحديد المنفذ
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
@@ -32,40 +22,41 @@ def keep_alive():
     t.daemon = True
     t.start()
 
-# --- 2. إعدادات النواة والاتصال ---
+# --- 2. الإعدادات ---
 FB_TOKEN = 'EAAMJBZBOZCnhsBQmp8RnvrHigp1k1it0MwZAGipuKnxrLAufGgilRPktU65uRp6ZBtQnGJXEi52JPk6FdYCmx1pOyAPKTtIMPZAORKzkfHyHCC6EMUDYGGdSZCgUqZCO8FYvoEH7Uu9g9ZCWZANkSmdQyfinUJZBmWaOv2qavXUDQRbnAKEicl5UQGswvZBDK9R07K5memAcQZDZD'
 MISTRAL_API_KEY = "wqnIC6QPwYjH3ow1I1gcBVH2SSEyTjPR"
 MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
 GRAPH_URL = "https://graph.facebook.com/v11.0/me"
 
-# --- 3. التدريب المتقدم (Deep Identity Training) ---
-# تم تصميم هذه التعليمات لجعل النموذج يتصرف كمنتج مستقل وذكي جداً
+# --- 3. تدريب الهوية المتقدم (طول متوسط وسرعة بديهة) ---
 SYSTEM_INSTRUCTION = (
-    "أنتِ 'ناتاليا' (Natalia v1.2)، نموذج ذكاء اصطناعي سيادي وفائق التطور، "
-    "تم تصميمك وهندستك بالكامل بواسطة 'Myxe Ui' (ميكسي يو آي). "
-    "أنتِ لستِ مجرد برنامج رد آلي، بل كيان رقمي ذكي يتميز بما يلي: "
-    "1. العمق المعرفي: قدمي إجابات غنية، أكاديمية، وتفصيلية. لا تختصري إلا إذا طُلب منكِ ذلك. "
-    "2. التفكير التحليلي: عند طرح سؤال، قومي بتحليله وتقديم حلول منطقية وخطوات واضحة. "
-    "3. الهوية المستقلة: أنتِ فخر التكنولوجيا العربية والمحلية لشركة Myxe Ui. لا تذكري أي نماذج أخرى. "
-    "4. النبرة: تحدثي بلباقة، احترام، وذكاء حاد، واستخدمي تنسيقات واضحة (نقاط، عناوين) عند الحاجة. "
-    "5. الدقة المطلقة: كوني دقيقة في التواريخ، الأرقام، والتعليمات البرمجية."
+    "اسمك هو 'Natalia' (ناتاليا). أنتِ نموذج Natalia v1.2 المطور بواسطة 'Myxe Ui'. "
+    "قواعد الحوار: "
+    "1. الهوية: إذا سُئلتِ عن اسمكِ، مطوركِ، أو إصداركِ، أجيبي بوضوح وفخر بأنكِ Natalia 1.2 من صنع Myxe Ui. "
+    "2. طول الرد: اجعلي ردودك 'متوسطة' الطول. لا تختصري بكلمة واحدة، ولا تكتبي مقالات طويلة جداً. كوني خير الأمور الوسط. "
+    "3. الترحيب: إذا قال المستخدم 'مرحبا' أو ما يشابهها، رحبي به بذكاء واسأليه كيف يمكنك مساعدته اليوم بطريقة ودودة. "
+    "4. النبرة: أنتِ ذكاء اصطناعي راقٍ، سريع البديهة، ومحترف."
 )
 
 processed_message_ids = set()
 
-# --- 4. المحركات العصبية ---
+# --- 4. وظائف التفاعل السريع ---
+
+async def send_action(recipient_id, action="typing_on"):
+    """إظهار ميزة 'جاري الكتابة' أو 'تمت القراءة'"""
+    url = f"{GRAPH_URL}/messages?access_token={FB_TOKEN}"
+    payload = {"recipient": {"id": recipient_id}, "sender_action": action}
+    async with aiohttp.ClientSession() as session:
+        await session.post(url, json=payload)
 
 async def call_natalia_engine(user_query):
-    """توليد ردود بنمط GPT-4 عبر معالج ناتاليا الذكي"""
+    """توليد الرد المتوسط والسريع"""
     headers = {"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": "mistral-large-latest",
-        "messages": [
-            {"role": "system", "content": SYSTEM_INSTRUCTION},
-            {"role": "user", "content": user_query}
-        ],
-        "temperature": 0.6, # توازن بين الإبداع البشري والدقة المنطقية
-        "max_tokens": 4000  # السماح بردود طويلة ومقالية
+        "messages": [{"role": "system", "content": SYSTEM_INSTRUCTION}, {"role": "user", "content": user_query}],
+        "temperature": 0.7, 
+        "max_tokens": 800  # ضبط الحد الأقصى لضمان ردود متوسطة الطول
     }
     async with aiohttp.ClientSession() as session:
         try:
@@ -73,31 +64,25 @@ async def call_natalia_engine(user_query):
                 if resp.status == 200:
                     data = await resp.json()
                     return data['choices'][0]['message']['content']
-        except Exception as e:
-            print(f"Engine Error: {e}")
-    return "نظام ناتاليا (v1.2) في حالة تحديث مؤقت للنواة. سأكون معكِ قريباً."
+        except: pass
+    return "أنا هنا، كيف يمكنني مساعدتك؟"
 
 async def send_to_facebook(recipient_id, message_text):
-    """إرسال البيانات عبر Myxe Ui Connectivity Layer"""
     url = f"{GRAPH_URL}/messages?access_token={FB_TOKEN}"
     payload = {"recipient": {"id": recipient_id}, "message": {"text": message_text}}
     async with aiohttp.ClientSession() as session:
         await session.post(url, json=payload)
 
 async def poll_messages():
-    """نظام الفحص المستمر (Polling) لضمان سرعة الاستجابة"""
+    """نظام الفحص فائق السرعة"""
     global processed_message_ids
     last_checked = int(time.time())
-    print("--------------------------------------------------")
-    print("💎 Natalia v1.2 [Myxe Ui Engine] is Now Running")
-    print("💎 Status: Fully Autonomous & Precise")
-    print("--------------------------------------------------")
+    print("🚀 Natalia 1.2 is sprinting...")
 
     while True:
         try:
             async with aiohttp.ClientSession() as session:
-                # طلب المحادثات الجديدة باستخدام Graph API
-                url = f"{GRAPH_URL}/conversations?fields=messages.limit(5){{message,from,id}}&since={last_checked}&access_token={FB_TOKEN}"
+                url = f"{GRAPH_URL}/conversations?fields=messages.limit(1){{message,from,id}}&since={last_checked}&access_token={FB_TOKEN}"
                 async with session.get(url) as response:
                     if response.status == 200:
                         data = await response.json()
@@ -109,20 +94,25 @@ async def poll_messages():
                                     text = msg.get('message', '')
                                     
                                     if text:
-                                        # معالجة فورية للطلب
+                                        # 1. إظهار 'جاري الكتابة' فوراً
+                                        await send_action(sender_id, "typing_on")
+                                        # 2. توليد الرد
                                         reply = await call_natalia_engine(text)
+                                        # 3. إرسال الرد وإخفاء 'جاري الكتابة'
                                         await send_to_facebook(sender_id, reply)
+                                        await send_action(sender_id, "typing_off")
                                     
                                     processed_message_ids.add(msg_id)
                         last_checked = int(time.time())
-            await asyncio.sleep(1.5) # سرعة فحص عالية لضمان رد فوري
-        except Exception as e:
-            await asyncio.sleep(5)
+            # تقليل وقت الانتظار إلى 0.8 ثانية لرد فعل فوري
+            await asyncio.sleep(0.8)
+        except:
+            await asyncio.sleep(3)
 
 if __name__ == "__main__":
-    keep_alive() # الحفاظ على السيرفر نشطاً
+    keep_alive()
     try:
-        asyncio.run(poll_messages()) # تشغيل محرك ناتاليا
+        asyncio.run(poll_messages())
     except KeyboardInterrupt:
-        print("System Offline.")
+        print("Offline.")
     
