@@ -1,179 +1,136 @@
+import requests
+import json
+import time
 import asyncio
 import aiohttp
 import os
-import json
-import time
-import sqlite3
-import random
-from flask import Flask, render_template_string
+from flask import Flask
 from threading import Thread
 
-# ==========================================
-# 1) واجهة الويب المتطورة (Turbo UI)
-# ==========================================
-app = Flask('Neuro_Turbo_Core')
-
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="ar">
-<head>
-    <meta charset="UTF-8">
-    <title>Neuro 2.0 Turbo</title>
-    <style>
-        body { background: #020617; color: #38bdf8; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .container { text-align: center; border: 1px solid #1e293b; padding: 40px; border-radius: 15px; background: #0f172a; box-shadow: 0 0 30px rgba(56, 189, 248, 0.2); }
-        .status-light { display: inline-block; width: 12px; height: 12px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 10px #22c55e; margin-right: 10px; }
-        h1 { font-size: 2.5rem; margin: 10px 0; color: #f87171; }
-        .mode { color: #94a3b8; font-weight: bold; text-transform: uppercase; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="status-light"></div>
-        <h1>NEURO 2.0 TURBO</h1>
-        <div class="mode">Ultra-Low Latency Mode: ACTIVE</div>
-    </div>
-</body>
-</html>
-"""
+# --- إعداد Flask لـ Render ---
+# Render يتطلب وجود منفذ مفتوح لضمان استمرار الخدمة
+app = Flask('')
 
 @app.route('/')
 def home():
-    return render_template_string(HTML_TEMPLATE)
+    return "Bot is alive and running!"
 
-# ==========================================
-# 2) نظام الذاكرة الأبدية
-# ==========================================
-def init_db():
-    conn = sqlite3.connect('neuro_memory.db')
-    c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS memory (user_id TEXT PRIMARY KEY, history TEXT)''')
-    conn.commit()
-    conn.close()
+def run_flask():
+    # Render يمرر المنفذ عبر متغير البيئة PORT
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
-def save_memory(user_id, history):
-    conn = sqlite3.connect('neuro_memory.db')
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO memory VALUES (?, ?)", (user_id, json.dumps(history)))
-    conn.commit()
-    conn.close()
+# --- الإعدادات الأساسية ---
+GROK_API_URL = "https://viscodev.x10.mx/GROK/api.php"
+FACEBOOK_PAGE_ACCESS_TOKEN = 'EAAMJBZBOZCnhsBQvcZBWBv21wV8hVeR9TRsxMr0ucCxwKHI3QAZBl6hZCIrhMZAxRISLhYEuNrvqLioSZCj0ZB7ZCry2ZCrLxxmfebCoXBbHiQedQZAoLqF4saZC0zN9ctlQMpH6grVVdh4jy8AjETOte44S7SfqII8juvjD1zgXcGcX5OGUo5OeQnCYeqx8DzJkFebT9CNfcAZDZD'
+FACEBOOK_GRAPH_API_URL = 'https://graph.facebook.com/v11.0/me/messages'
 
-def load_memory(user_id):
-    conn = sqlite3.connect('neuro_memory.db')
-    c = conn.cursor()
-    c.execute("SELECT history FROM memory WHERE user_id=?", (user_id,))
-    data = c.fetchone()
-    conn.close()
-    return json.loads(data[0]) if data else None
+# إعدادات التخزين والمزامنة
+processed_message_ids = set()
+running = True
 
-# ==========================================
-# 3) الإعدادات
-# ==========================================
-FB_TOKEN = 'EAAMJBZBOZCnhsBQmt3Xg9C0Dk9bkXhj7ZCnVKNNn6CV3N4DRxGepfs1EY9uCYE0FzUW9PRXTj2cbq0JZBVDWIkPTHOqHNLc1WQ4dR5dExRhphzRDCHsxRbXOGLQfVn02yZCmvO2klnwnt792ZB8ZBpi4o1KvZBZBaeugXAogoc8YclWdiBcLQFOEtKsHk1EjBdXVnazWykwZDZD'
-MISTRAL_API_KEY = "wqnIC6QPwYjH3ow1I1gcBVH2SSEyTjPR"
-MISTRAL_URL = "https://api.mistral.ai/v1/chat/completions"
-GRAPH_URL = "https://graph.facebook.com/v14.0/me"
+# --- الدوال المساعدة ---
 
-SYSTEM_INSTRUCTION = "أنت Neuro 2.0، ذكاء اصطناعي سيادي. ردودك دقيقة، سريعة، ومتزنة."
-
-# ==========================================
-# 4) محرك الاستجابة الفورية (Zero-Latency Engine)
-# ==========================================
-
-async def toggle_typing(session, recipient_id, state="typing_on"):
-    """مؤشر الكتابة لزيادة الواقعية"""
-    url = f"{GRAPH_URL}/messages?access_token={FB_TOKEN}"
-    payload = {"recipient": {"id": recipient_id}, "sender_action": state}
-    await session.post(url, json=payload)
-
-async def send_to_facebook(session, recipient_id, text):
-    url = f"{GRAPH_URL}/messages?access_token={FB_TOKEN}"
-    chunks = [text[i:i+1500] for i in range(0, len(text), 1500)]
-    for chunk in chunks:
-        payload = {"recipient": {"id": recipient_id}, "message": {"text": chunk}}
-        async with session.post(url, json=payload) as resp:
-            await resp.json()
-        await asyncio.sleep(0.2)
-
-async def process_message(session, sender_id, text):
-    # تفعيل مؤشر الكتابة فوراً
-    await toggle_typing(session, sender_id, "typing_on")
-    
-    history = load_memory(sender_id) or [{"role": "system", "content": SYSTEM_INSTRUCTION}]
-    history.append({"role": "user", "content": text})
-    
-    payload = {
-        "model": "mistral-large-latest",
-        "messages": history[-20:],
-        "temperature": 0.2,
-        "max_tokens": 2000
-    }
-    
-    headers = {"Authorization": f"Bearer {MISTRAL_API_KEY}"}
-    
+async def process_with_grok(text):
     try:
-        async with session.post(MISTRAL_URL, json=payload, headers=headers) as resp:
-            data = await resp.json()
-            if 'choices' in data:
-                reply = data['choices'][0]['message']['content']
-                history.append({"role": "assistant", "content": reply})
-                save_memory(sender_id, history)
-                
-                # إرسال الرد وإطفاء مؤشر الكتابة
-                await send_to_facebook(session, sender_id, reply)
-                await toggle_typing(session, sender_id, "typing_off")
+        params = {'message': text}
+        async with aiohttp.ClientSession() as session:
+            async with session.get(GROK_API_URL, params=params, timeout=30) as response:
+                if response.status == 200:
+                    return await response.json()
+        return {'success': False, 'error': f'Status: {response.status}'}
     except Exception as e:
-        print(f"Engine Error: {e}")
+        return {'success': False, 'error': str(e)}
 
-# ==========================================
-# 5) نظام الرصد المصلح (Fixed Polling)
-# ==========================================
+def is_image_url(url):
+    image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.webp')
+    return any(str(url).lower().endswith(ext) for ext in image_extensions)
 
-async def poll_messages():
-    init_db()
-    processed_message_ids = set()
+# --- دوال فيسبوك ---
+
+async def send_typing_on(recipient_id):
+    data = {"recipient": {"id": recipient_id}, "sender_action": "typing_on"}
+    async with aiohttp.ClientSession() as session:
+        await session.post(FACEBOOK_GRAPH_API_URL, params={"access_token": FACEBOOK_PAGE_ACCESS_TOKEN}, json=data)
+
+async def send_facebook_message(recipient_id, message_text):
+    data = {"recipient": {"id": recipient_id}, "message": {"text": message_text}}
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(FACEBOOK_GRAPH_API_URL, params={"access_token": FACEBOOK_PAGE_ACCESS_TOKEN}, json=data) as response:
+                if response.status != 200:
+                    print(f"Error sending message: {await response.text()}")
+        except Exception as e:
+            print(f"Exception sending message: {e}")
+
+async def send_facebook_image(recipient_id, image_url):
+    data = {
+        "recipient": {"id": recipient_id},
+        "message": {"attachment": {"type": "image", "payload": {"url": image_url, "is_reusable": True}}}
+    }
+    async with aiohttp.ClientSession() as session:
+        await session.post(FACEBOOK_GRAPH_API_URL, params={"access_token": FACEBOOK_PAGE_ACCESS_TOKEN}, json=data)
+
+# --- معالجة المنطق ---
+
+async def handle_message(sender_id, message_text):
+    if not message_text: return
+    print(f"Processing message from {sender_id}")
+    await send_typing_on(sender_id)
+    ai_response = await process_with_grok(message_text)
     
-    # استخدام سعة اتصال أكبر للسرعة
-    connector = aiohttp.TCPConnector(limit=200)
-    async with aiohttp.ClientSession(connector=connector) as session:
-        print("⚡ Neuro 2.0 Turbo Active: Waiting for messages...")
-        
-        while True:
-            try:
-                # طلب آخر الرسائل بدون تأخير زمني في الاستعلام
-                url = f"{GRAPH_URL}/conversations?fields=messages.limit(2){{message,from,id,created_time}}&access_token={FB_TOKEN}"
-                async with session.get(url) as response:
+    if ai_response.get('success'):
+        response_text = ai_response.get('response', 'Empty response')
+        if is_image_url(response_text):
+            await send_facebook_image(sender_id, response_text)
+        else:
+            await send_facebook_message(sender_id, response_text)
+    else:
+        await send_facebook_message(sender_id, "❌ حدث خطأ في النظام.")
+
+async def poll_facebook_messages():
+    global running, processed_message_ids
+    last_checked = int(time.time()) - 60
+    print("Polling started...")
+    
+    while running:
+        try:
+            async with aiohttp.ClientSession() as session:
+                conv_url = f"https://graph.facebook.com/v11.0/me/conversations?fields=messages.limit(5){{message,from,id}}&since={last_checked}&access_token={FACEBOOK_PAGE_ACCESS_TOKEN}"
+                async with session.get(conv_url) as response:
                     if response.status == 200:
                         data = await response.json()
-                        tasks = []
-                        
-                        for conv in data.get('data', []):
-                            msgs = conv.get('messages', {}).get('data', [])
-                            if not msgs: continue
-                            
-                            # معالجة أحدث رسالة فقط لضمان عدم حدوث إزاحة
-                            latest_msg = msgs[0]
-                            m_id = latest_msg['id']
-                            
-                            if m_id not in processed_message_ids:
-                                sender_id = latest_msg['from']['id']
-                                text = latest_msg.get('message', '')
-                                if text:
-                                    # إطلاق مهمة المعالجة في الخلفية فوراً دون انتظار
-                                    tasks.append(asyncio.create_task(process_message(session, sender_id, text)))
-                                processed_message_ids.add(m_id)
-                        
-                        # تنظيف ذاكرة المعرفات المجرى معالجتها دورياً
-                        if len(processed_message_ids) > 1000:
-                            processed_message_ids.clear()
+                        for conversation in data.get('data', []):
+                            if 'messages' in conversation:
+                                for msg in conversation['messages']['data']:
+                                    msg_id = msg['id']
+                                    if msg_id not in processed_message_ids:
+                                        sender_id = msg['from']['id']
+                                        text = msg.get('message')
+                                        if text:
+                                            await handle_message(sender_id, text)
+                                            processed_message_ids.add(msg_id)
+                    last_checked = int(time.time())
+            await asyncio.sleep(2)
+        except Exception as e:
+            print(f"Polling error: {e}")
+            await asyncio.sleep(5)
 
-                # فحص سريع جداً كل 0.2 ثانية للاستجابة اللحظية
-                await asyncio.sleep(0.2)
-            except Exception as e:
-                print(f"Polling Alert: {e}")
-                await asyncio.sleep(1)
+# --- نقطة الانطلاق ---
+
+def start_bot():
+    asyncio.run(poll_facebook_messages())
 
 if __name__ == "__main__":
-    Thread(target=lambda: app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080))), daemon=True).start()
-    asyncio.run(poll_messages())
+    # 1. تشغيل خادم Flask في الخلفية
+    web_thread = Thread(target=run_flask)
+    web_thread.daemon = True
+    web_thread.start()
     
+    # 2. تشغيل البوت في الخيط الرئيسي
+    try:
+        start_bot()
+    except KeyboardInterrupt:
+        running = False
+        print("Bot stopped.")
+        
