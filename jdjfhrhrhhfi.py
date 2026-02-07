@@ -144,4 +144,3 @@ if __name__ == "__main__":
         asyncio.run(poll_facebook_messages())
     except KeyboardInterrupt:
         running = False
-        
