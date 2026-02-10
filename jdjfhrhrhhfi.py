@@ -20,7 +20,7 @@ def run_flask():
 
 # --- الإعدادات الأساسية ---
 GROK_API_URL = "https://viscodev.x10.mx/GROK/api.php"
-FACEBOOK_PAGE_ACCESS_TOKEN = 'EAAMJBZBOZCnhsBQvcZBWBv21wV8hVeR9TRsxMr0ucCxwKHI3QAZBl6hZCIrhMZAxRISLhYEuNrvqLioSZCj0ZB7ZCry2ZCrLxxmfebCoXBbHiQedQZAoLqF4saZC0zN9ctlQMpH6grVVdh4jy8AjETOte44S7SfqII8juvjD1zgXcGcX5OGUo5OeQnCYeqx8DzJkFebT9CNfcAZDZD'
+FACEBOOK_PAGE_ACCESS_TOKEN = 'EAAMJBZBOZCnhsBQiK9MsZAMoZCgKB0qzwOdqD1lSHips2iuOQ5K4evAMj9EWLKaPeREZB354bXSeyxZCZAj5oTSNZBMwIZCMryYSaaw9mRyP78PJ3WoDG8qLZAbifQZBsdXdxEzYoe2ZCnkaubcU59iPMpMp8ZCw8vtBpHkqiu0l9RXsSEu1aYuuZACzA73avQRNcVZAAOZA91wlcwZDZD'
 FACEBOOK_GRAPH_API_URL = 'https://graph.facebook.com/v11.0/me/messages'
 
 processed_message_ids = set()
